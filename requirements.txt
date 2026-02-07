@@ -1,0 +1,9 @@
+Flask
+Flask-Cors
+requests
+python-dotenv
+beautifulsoup4
+html2text
+trafilatura
+playwright
+aiohttp
