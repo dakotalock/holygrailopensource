@@ -94,6 +94,7 @@ To get the Holy Grail AI System running on your local machine, follow these step
 **1. Prerequisites:**
 *   Python 3.10 or higher
 *   `pip` for package management
+*   Remember to change filepaths to match your own (ctrl + f \mnt\)
 
 **2. Clone the Repository:**
 ```bash
