@@ -95,9 +95,9 @@ class Config:
     VECTOR_CACHE_FILE = BASE_DIR / "vector_cache.json"  # New for context optimization
 
     MODELS = {
-    "Model 1": "gemini-3-flash-preview",  # standard model
-    "Model 2": "gemini-2.5-flash-preview-05-20",  # Original fast model
-    "Model 3": "gemini-2.5-flash-preview-05-20"  # Fallback model
+    "Model 1": "gemini-3.1-flash-lite-preview",  # standard model
+    "Model 2": "gemini-2.5-flash",  # Original fast model
+    "Model 3": "gemini-2.5-flash"  # Fallback model
 }
     DEFAULT_MODEL = "Model 1"
 
