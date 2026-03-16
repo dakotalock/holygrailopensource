@@ -85,6 +85,9 @@ class Config:
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
     NETLIFY_AUTH_TOKEN = os.getenv("NETLIFY_AUTH_TOKEN")
 
+    # LLM Provider selection: "gemini" (default) or "minimax"
+    LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").lower()
+
     BASE_DIR = Path(os.getenv("BASE_DIR", "/mnt/c/Users/dakot/OneDrive/Desktop/holygrailexperimental"))
 
     MEMORY_FILE = BASE_DIR / "context_memory.json"
@@ -100,6 +103,15 @@ class Config:
     "Model 3": "gemini-2.5-flash"  # Fallback model
 }
     DEFAULT_MODEL = "Model 1"
+
+    # MiniMax LLM Configuration (OpenAI-compatible API)
+    MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "")
+    MINIMAX_API_BASE_URL = os.getenv("MINIMAX_API_BASE_URL", "https://api.minimax.io/v1")
+    MINIMAX_MODELS = {
+        "Model 1": "MiniMax-M2.5",           # Default model (204K context)
+        "Model 2": "MiniMax-M2.5-highspeed",  # Faster variant
+        "Model 3": "MiniMax-M2.5"             # Fallback
+    }
 
     MIN_ITERATIONS = 3
     MAX_ITERATIONS = 5
@@ -3365,8 +3377,128 @@ Recommendations:
 Be concise but insightful. Focus on actionable insights. Use markdown formatting for readability."""
 
 # --- Turbo Mode 2.0 Core Functions ---
+def _convert_gemini_to_openai_messages(contents, system_context=None):
+    """Convert Gemini-format contents to OpenAI-compatible messages format."""
+    messages = []
+    if system_context:
+        messages.append({"role": "system", "content": system_context})
+    for item in contents:
+        role = item.get("role", "user")
+        # Map Gemini roles to OpenAI roles
+        if role == "model":
+            role = "assistant"
+        elif role not in ("user", "assistant", "system"):
+            role = "user"
+        text = ""
+        if "parts" in item:
+            text = " ".join(part.get("text", "") for part in item["parts"] if part.get("text"))
+        if text:
+            messages.append({"role": role, "content": text})
+    return messages
+
+
+def call_minimax_api(model_name, prompt_text=None, conversation_history=None, temperature=0.7, system_context=None):
+    """Makes a call to MiniMax API (OpenAI-compatible) with robust error handling and model fallback."""
+    max_attempts = 3
+    base_delay = 2
+    models_to_try = [
+        Config.MINIMAX_MODELS.get(model_name, Config.MINIMAX_MODELS[Config.DEFAULT_MODEL]),
+        "MiniMax-M2.5-highspeed",  # Fallback
+        "MiniMax-M2.5"             # Final fallback
+    ]
+
+    # MiniMax requires temperature in (0.0, 1.0] — never pass 0
+    temperature = max(0.01, min(temperature, 1.0))
+
+    for attempt in range(max_attempts):
+        for current_model in models_to_try:
+            try:
+                # Build the payload using TokenPruner, then convert to OpenAI format
+                contents, selected_tokens = TokenPruner.build_payload(
+                    system_context=system_context,
+                    conversation_history=conversation_history,
+                    prompt_text=prompt_text,
+                    token_limit=TokenPruner.TOKEN_LIMIT
+                )
+
+                if not contents:
+                    raise ValueError("TokenPruner produced an empty payload.")
+
+                messages = _convert_gemini_to_openai_messages(contents)
+
+                payload = {
+                    "model": current_model,
+                    "messages": messages,
+                    "temperature": temperature,
+                    "top_p": 0.9,
+                }
+
+                print_debug(f"Calling MiniMax API with model: {current_model}")
+                print_debug(f"MiniMax payload capped at {selected_tokens} tokens by TokenPruner.")
+
+                delay = min(base_delay * (2 ** attempt) + random.uniform(0, 1), 60)
+                time.sleep(delay)
+
+                api_url = f"{Config.MINIMAX_API_BASE_URL.rstrip('/')}/chat/completions"
+                response = requests.post(
+                    api_url,
+                    json=payload,
+                    headers={
+                        "Authorization": f"Bearer {Config.MINIMAX_API_KEY}",
+                        "Content-Type": "application/json"
+                    },
+                    timeout=TurboConfig.REQUEST_TIMEOUT
+                )
+
+                if response.status_code == 429:
+                    retry_after = int(response.headers.get('Retry-After', delay))
+                    print_warning(f"Rate limited. Waiting {retry_after} seconds...")
+                    time.sleep(retry_after)
+                    continue
+
+                response.raise_for_status()
+                response_json = response.json()
+
+                if 'choices' in response_json and response_json['choices']:
+                    choice = response_json['choices'][0]
+                    message = choice.get('message', {})
+                    content = message.get('content', '')
+                    if content:
+                        return content
+
+                raise ValueError("Unexpected MiniMax API response structure.")
+
+            except requests.exceptions.HTTPError as e:
+                if e.response.status_code == 404:
+                    print_warning(f"Model {current_model} not found, trying next...")
+                    continue
+                elif e.response.status_code == 429:
+                    print_warning(f"Rate limited on model {current_model}, trying next...")
+                    continue
+                else:
+                    print_warning(f"HTTP error with model {current_model}: {str(e)}")
+                    if current_model == models_to_try[-1]:
+                        raise
+                    continue
+
+            except Exception as e:
+                print_warning(f"Error with model {current_model}: {str(e)}")
+                if current_model == models_to_try[-1]:
+                    raise
+                continue
+
+    raise Exception(f"All {max_attempts} attempts failed across all MiniMax models")
+
+
 def call_gemini_api(model_name, prompt_text=None, conversation_history=None, temperature=0.7, system_context=None):
-    """Makes a call to the Gemini API with robust error handling and model fallback."""
+    """Makes a call to the configured LLM API with robust error handling and model fallback.
+
+    Supports Gemini (default) and MiniMax providers. Set LLM_PROVIDER env var to switch.
+    """
+    # Dispatch to MiniMax if configured
+    if Config.LLM_PROVIDER == "minimax":
+        return call_minimax_api(model_name, prompt_text, conversation_history, temperature, system_context)
+
     max_attempts = 3
     base_delay = 2  # Base delay in seconds
     models_to_try = [

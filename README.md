@@ -56,7 +56,7 @@ The system is built around a Python **Flask** backend that orchestrates the vari
              |
              v
 +--------------------------------+       +-------------------------+
-|     AI Core / Multi-Agent      |------>|      Gemini Pro API     |
+|     AI Core / Multi-Agent      |------>|  Gemini / MiniMax API   |
 | (Emissary, Memento, Dr. Debug) |       +-------------------------+
 +--------------------------------+
              |
@@ -80,7 +80,7 @@ The system is built around a Python **Flask** backend that orchestrates the vari
 ## 🛠️ Technical Stack
 
 *   **Backend:** Python 3, Flask
-*   **AI Model:** Google Gemini API
+*   **AI Models:** Google Gemini API, [MiniMax](https://www.minimax.io) (OpenAI-compatible)
 *   **Web Automation:** Playwright, aiohttp, BeautifulSoup, Trafilatura
 *   **Frontend:** HTML, Tailwind CSS, JavaScript
 *   **Deployment:** Netlify API
@@ -128,6 +128,22 @@ pip install -r requirements.txt
     GITHUB_USERNAME="YOUR_GITHUB_USERNAME"
     ```
 
+**Using MiniMax as an Alternative LLM Provider:**
+
+To use [MiniMax](https://www.minimax.io) instead of Gemini, add the following to your `.env`:
+```
+LLM_PROVIDER="minimax"
+MINIMAX_API_KEY="YOUR_MINIMAX_API_KEY"
+```
+
+MiniMax offers the following models (204K token context window):
+| Model | Description |
+|-------|-------------|
+| `MiniMax-M2.5` | Default — peak performance, ultimate value |
+| `MiniMax-M2.5-highspeed` | Same performance, faster and more agile |
+
+The system will automatically use MiniMax models through its OpenAI-compatible API when `LLM_PROVIDER` is set to `"minimax"`. You can optionally override the base URL with `MINIMAX_API_BASE_URL` (defaults to `https://api.minimax.io/v1`; use `https://api.minimaxi.com/v1` for the China mainland endpoint).
+
 **6. Run the Backend Server:**
 ```bash
 python app_backend.py
@@ -153,7 +169,7 @@ Tips for use from Dakota Rain Lock:
 
 1. If you launch Holy Grail using a CLI agent (Gemini, Codex, Claude), tell it to run the Flask App nohup, and instruct it to operate the flask app by using curl commands to hit the endpoints, the CLI agent can actually pilot it for hours at a time, enabling true autonomous development.
 
-2. Holy Grail is currently set up to use Gemini 3 Flash as the LLM powering it, but any LLM can run it with minimal changes to the python code.
+2. Holy Grail supports multiple LLM providers. Set `LLM_PROVIDER="minimax"` in your `.env` to use MiniMax, or keep the default Gemini. See the setup section above for details.
 
 ## 📫 Get in Touch
 
